@@ -37,8 +37,8 @@ The following tables shows a compact overview of dependencies for this project.
 
 | package | version | Comments |
 |-------------|-------------|-------------|
-| python         | 2.7 | Tested with python 2.7.13
-| python-pip     |     | pip for python2.7
+| python         | 3.8 | Tested with python 3.8.10
+| python-pip     |     | pip
 | git            |     | To download this project
 | libglib2.0-dev |     | For bluepy module
 
@@ -46,8 +46,8 @@ The following tables shows a compact overview of dependencies for this project.
 
 | module | version | Comments |
 |-------------|-------------|-------------|
-| bluepy      | 1.2.0 | Newer versions have not been tested.
-| tableprint  | 0.8.0 | Newer versions have not been tested.
+| bluepy      | 1.3.0 | Newer versions have not been tested.
+| tableprint  | 0.9.1 | Newer versions have not been tested.
 
 ## Setup Raspberry Pi
 
@@ -109,23 +109,17 @@ Additionally, the ```read_waveplus.py``` script depends on the ```tableprint``` 
 to print nicely formated sensor data to the Raspberry Pi terminal at run-time.
 
 ```
-pi@raspberrypi:~$ sudo pip2 install tableprint==0.8.0
+pi@raspberrypi:~$ sudo pip install tableprint==0.8.0
 ```
 
-> **Note:** The ```read_waveplus.py``` script has been tested with bluepy==1.2.0 and tableprint==0.8.0. You may download the latest versions at your own risk.
+> **Note:** The ```read_waveplus.py``` script has been tested with bluepy==1.3.0 and tableprint==0.9.1. You may download the latest versions at your own risk.
 
 ## Downloading script
 
-Downloading using git:
+You can always go to [https://github.com/alairjunior/waveplus-reader](https://github.com/alairjunior/waveplus-reader) and download manually or downloading it using git:
 
 ```
-pi@raspberrypi:~$ sudo git clone https://github.com/Airthings/waveplus-reader.git
-```
-
-Downloading using wget:
-
-```
-pi@raspberrypi:~$ wget https://raw.githubusercontent.com/Airthings/waveplus-reader/master/read_waveplus.py
+pi@raspberrypi:~$ sudo git clone git@github.com:alairjunior/waveplus-reader.git
 ```
 
 # Usage
@@ -142,16 +136,14 @@ your phone while using this script.
 The general format for calling the ```read_waveplus.py``` script is as follows:
 
 ```
-read_waveplus.py SN SAMPLE-PERIOD [pipe > yourfilename.txt]
+python read_waveplus.py <serial>
 ```
 
-where the input arguments are:
+For a list of parameters, run:
 
-| input argument | example | Comments |
-|-------------|-------------|-------------|
-| SN            | 0123456789              | 10-digit number. Can be found under the magnetic backplate of your Airthings Wave Plus.
-| SAMPLE-PERIOD | 60                      | Read sensor values every 60 seconds. Must be larger than zero.
-| pipe          | pipe > yourfilename.txt | Optional. Since tableprint is incompatible with piping, we use a third optional input argument "pipe".
+```
+python read_waveplus.py -h
+```
 
 > **Note on choosing a sample period:** 
 Except for the radon measurements, the Wave Plus updates its current sensor values once every 5 minutes.
@@ -163,25 +155,13 @@ By default, the ```read_waveplus.py``` script will print the current sensor valu
 Run the Python script in the following way:
 
 ```
-pi@raspberrypi:~/waveplus-reader $ sudo python2 read_waveplus.py SN SAMPLE-PERIOD
+pi@raspberrypi:~/waveplus-reader $ sudo python3 read_waveplus.py <serial>
 ```
 
-where you change ```SN``` with the 10-digit serial number, and change ```SAMPLE-PERIOD``` to a numerical value of your choice.
+where you change ```<serial>``` with the 10-digit serial number.
 
 After a short delay, the script will print the current sensor values to the 
 Raspberry Pi terminal window. Exit the script using ```Ctrl+C```.
-
-## Piping data to a text-file
-
-If you want to pipe the results to a text-file, you can run the script in the following way:
-
-```
-pi@raspberrypi:~/waveplus-reader $ sudo python2 read_waveplus.py SN SAMPLE-PERIOD pipe > yourfilename.txt
-```
-
-where you change ```SN``` with the 10-digit serial number, and change ```SAMPLE-PERIOD``` to a numerical value of your choice.
-
-Exit the script using ```Ctrl+C```.
 
 # Sensor data description
 
@@ -195,26 +175,3 @@ Exit the script using ```Ctrl+C```.
 | CO2 level                     | ppm |
 | TVOC level                    | ppb | Total volatile organic compounds level
 
-# Contribution
-
-Let us know how it went! If you want contribute, you can do so by posting issues or suggest enhancement
-[here](https://github.com/Airthings/waveplus-reader/issues), or you can open a pull request for review
-[here](https://github.com/Airthings/waveplus-reader/pulls).
-
-# Release notes
-
-Release dated 04-Dec-2020
-
-* [bug] Fixed missing little-endian specifier.
-
-Release dated 14-Jan-2019
-
-* [bug] Fixed issue ([#4][i4])
-
-Release dated 14-Dec-2018
-
-* Added SAMPLE-PERIOD as an input argument.
-
-Initial release 12-Dec-2018
-
-[i4]: https://github.com/Airthings/waveplus-reader/issues/4
