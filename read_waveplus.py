@@ -27,54 +27,11 @@
 # ===============================
 
 from bluepy.btle import UUID, Peripheral, Scanner, DefaultDelegate
+import argparse
 import sys
 import time
 import struct
 import tableprint
-
-# ===============================
-# Script guards for correct usage
-# ===============================
-
-if len(sys.argv) < 3:
-    print "ERROR: Missing input argument SN or SAMPLE-PERIOD."
-    print "USAGE: read_waveplus.py SN SAMPLE-PERIOD [pipe > yourfile.txt]"
-    print "    where SN is the 10-digit serial number found under the magnetic backplate of your Wave Plus."
-    print "    where SAMPLE-PERIOD is the time in seconds between reading the current values."
-    print "    where [pipe > yourfile.txt] is optional and specifies that you want to pipe your results to yourfile.txt."
-    sys.exit(1)
-
-if sys.argv[1].isdigit() is not True or len(sys.argv[1]) != 10:
-    print "ERROR: Invalid SN format."
-    print "USAGE: read_waveplus.py SN SAMPLE-PERIOD [pipe > yourfile.txt]"
-    print "    where SN is the 10-digit serial number found under the magnetic backplate of your Wave Plus."
-    print "    where SAMPLE-PERIOD is the time in seconds between reading the current values."
-    print "    where [pipe > yourfile.txt] is optional and specifies that you want to pipe your results to yourfile.txt."
-    sys.exit(1)
-
-if sys.argv[2].isdigit() is not True or int(sys.argv[2])<0:
-    print "ERROR: Invalid SAMPLE-PERIOD. Must be a numerical value larger than zero."
-    print "USAGE: read_waveplus.py SN SAMPLE-PERIOD [pipe > yourfile.txt]"
-    print "    where SN is the 10-digit serial number found under the magnetic backplate of your Wave Plus."
-    print "    where SAMPLE-PERIOD is the time in seconds between reading the current values."
-    print "    where [pipe > yourfile.txt] is optional and specifies that you want to pipe your results to yourfile.txt."
-    sys.exit(1)
-
-if len(sys.argv) > 3:
-    Mode = sys.argv[3].lower()
-else:
-    Mode = 'terminal' # (default) print to terminal 
-
-if Mode!='pipe' and Mode!='terminal':
-    print "ERROR: Invalid piping method."
-    print "USAGE: read_waveplus.py SN SAMPLE-PERIOD [pipe > yourfile.txt]"
-    print "    where SN is the 10-digit serial number found under the magnetic backplate of your Wave Plus."
-    print "    where SAMPLE-PERIOD is the time in seconds between reading the current values."
-    print "    where [pipe > yourfile.txt] is optional and specifies that you want to pipe your results to yourfile.txt."
-    sys.exit(1)
-
-SerialNumber = int(sys.argv[1])
-SamplePeriod = int(sys.argv[2])
 
 # ====================================
 # Utility functions for WavePlus class
@@ -100,15 +57,16 @@ def parseSerialNumber(ManuDataHexStr):
 # ===============================
 
 class WavePlus():
-
-    
-    
-    def __init__(self, SerialNumber):
+    def __init__(self, SerialNumber, hasAirQuality=False):
         self.periph        = None
         self.curr_val_char = None
         self.MacAddr       = None
         self.SN            = SerialNumber
-        self.uuid          = UUID("b42e2a68-ade7-11e4-89d3-123b93f75cba")
+        self.uuid          = "b42e2a68-ade7-11e4-89d3-123b93f75cba" if hasAirQuality else "b42e4dcc-ade7-11e4-89d3-123b93f75cba"
+        self.numSensors    = 7 if hasAirQuality else 4
+
+    def getNumSensors(self):
+        return self.numSensors
 
     def connect(self):
         # Auto-discover device on first connection
@@ -124,30 +82,34 @@ class WavePlus():
                     if (SN == self.SN):
                         self.MacAddr = dev.addr # exits the while loop on next conditional check
                         break # exit for loop
-            
+
             if (self.MacAddr is None):
-                print "ERROR: Could not find device."
-                print "GUIDE: (1) Please verify the serial number."
-                print "       (2) Ensure that the device is advertising."
-                print "       (3) Retry connection."
+                print("ERROR: Could not find device.")
+                print("GUIDE: (1) Please verify the serial number.")
+                print("       (2) Ensure that the device is advertising.")
+                print("       (3) Retry connection.")
                 sys.exit(1)
-        
+
         # Connect to device
-        if (self.periph is None):
-            self.periph = Peripheral(self.MacAddr)
-        if (self.curr_val_char is None):
-            self.curr_val_char = self.periph.getCharacteristics(uuid=self.uuid)[0]
-        
+        try:
+            if (self.periph is None):
+                self.periph = Peripheral(self.MacAddr)
+
+            if (self.curr_val_char is None):
+                self.curr_val_char = self.periph.getCharacteristics(uuid=self.uuid)[0]
+        except Exception as e:
+           raise Exception("Failed to connect. Check if device is on and if you are close enough.")
+
     def read(self):
         if (self.curr_val_char is None):
-            print "ERROR: Devices are not connected."
-            sys.exit(1)            
+            print("ERROR: Devices are not connected.")
+            sys.exit(1)
         rawdata = self.curr_val_char.read()
         rawdata = struct.unpack('<BBBBHHHHHHHH', rawdata)
-        sensors = Sensors()
+        sensors = Sensors(self.numSensors)
         sensors.set(rawdata)
         return sensors
-    
+
     def disconnect(self):
         if self.periph is not None:
             self.periph.disconnect()
@@ -158,36 +120,41 @@ class WavePlus():
 # Class Sensor and sensor definitions
 # ===================================
 
-NUMBER_OF_SENSORS               = 7
-SENSOR_IDX_HUMIDITY             = 0
-SENSOR_IDX_RADON_SHORT_TERM_AVG = 1
-SENSOR_IDX_RADON_LONG_TERM_AVG  = 2
-SENSOR_IDX_TEMPERATURE          = 3
-SENSOR_IDX_REL_ATM_PRESSURE     = 4
-SENSOR_IDX_CO2_LVL              = 5
-SENSOR_IDX_VOC_LVL              = 6
-
 class Sensors():
-    def __init__(self):
+    HUMIDITY             = 0
+    RADON_SHORT_TERM_AVG = 1
+    RADON_LONG_TERM_AVG  = 2
+    TEMPERATURE          = 3
+    REL_ATM_PRESSURE     = 4
+    CO2_LVL              = 5
+    VOC_LVL              = 6
+    def __init__(self, numberOfSensors):
         self.sensor_version = None
-        self.sensor_data    = [None]*NUMBER_OF_SENSORS
-        self.sensor_units   = ["%rH", "Bq/m3", "Bq/m3", "degC", "hPa", "ppm", "ppb"]
-    
+        self.numberOfSensors = numberOfSensors
+        self.sensor_data    = [None]*numberOfSensors
+        self.sensor_units   = ["%rH", "Bq/m3", "Bq/m3", "degC", "hPa", "ppm", "ppb"][:numberOfSensors]
+
     def set(self, rawData):
         self.sensor_version = rawData[0]
         if (self.sensor_version == 1):
-            self.sensor_data[SENSOR_IDX_HUMIDITY]             = rawData[1]/2.0
-            self.sensor_data[SENSOR_IDX_RADON_SHORT_TERM_AVG] = self.conv2radon(rawData[4])
-            self.sensor_data[SENSOR_IDX_RADON_LONG_TERM_AVG]  = self.conv2radon(rawData[5])
-            self.sensor_data[SENSOR_IDX_TEMPERATURE]          = rawData[6]/100.0
-            self.sensor_data[SENSOR_IDX_REL_ATM_PRESSURE]     = rawData[7]/50.0
-            self.sensor_data[SENSOR_IDX_CO2_LVL]              = rawData[8]*1.0
-            self.sensor_data[SENSOR_IDX_VOC_LVL]              = rawData[9]*1.0
+            processor = {
+                Sensors.HUMIDITY                 : rawData[1]/2.0,
+                Sensors.RADON_SHORT_TERM_AVG     : self.conv2radon(rawData[4]),
+                Sensors.RADON_LONG_TERM_AVG      : self.conv2radon(rawData[5]),
+                Sensors.TEMPERATURE              : rawData[6]/100.0,
+                Sensors.REL_ATM_PRESSURE         : rawData[7]/50.0,
+                Sensors.CO2_LVL                  : rawData[8]*1.0,
+                Sensors.VOC_LVL                  : rawData[9]*1.0
+            }
+
+            for sensor in range(self.numberOfSensors):
+                self.sensor_data[sensor] = processor[sensor]
+
         else:
-            print "ERROR: Unknown sensor version.\n"
-            print "GUIDE: Contact Airthings for support.\n"
+            print("ERROR: Unknown sensor version.\n")
+            print("GUIDE: Contact Airthings for support.\n")
             sys.exit(1)
-   
+
     def conv2radon(self, radon_raw):
         radon = "N/A" # Either invalid measurement, or not available
         if 0 <= radon_raw <= 16383:
@@ -200,49 +167,75 @@ class Sensors():
     def getUnit(self, sensor_index):
         return self.sensor_units[sensor_index]
 
-try:
-    #---- Initialize ----#
-    waveplus = WavePlus(SerialNumber)
-    
-    if (Mode=='terminal'):
-        print "\nPress ctrl+C to exit program\n"
-    
-    print "Device serial number: %s" %(SerialNumber)
-    
-    header = ['Humidity', 'Radon ST avg', 'Radon LT avg', 'Temperature', 'Pressure', 'CO2 level', 'VOC level']
-    
-    if (Mode=='terminal'):
-        print tableprint.header(header, width=12)
-    elif (Mode=='pipe'):
-        print header
-        
-    while True:
-        
-        waveplus.connect()
-        
-        # read values
-        sensors = waveplus.read()
-        
-        # extract
-        humidity     = str(sensors.getValue(SENSOR_IDX_HUMIDITY))             + " " + str(sensors.getUnit(SENSOR_IDX_HUMIDITY))
-        radon_st_avg = str(sensors.getValue(SENSOR_IDX_RADON_SHORT_TERM_AVG)) + " " + str(sensors.getUnit(SENSOR_IDX_RADON_SHORT_TERM_AVG))
-        radon_lt_avg = str(sensors.getValue(SENSOR_IDX_RADON_LONG_TERM_AVG))  + " " + str(sensors.getUnit(SENSOR_IDX_RADON_LONG_TERM_AVG))
-        temperature  = str(sensors.getValue(SENSOR_IDX_TEMPERATURE))          + " " + str(sensors.getUnit(SENSOR_IDX_TEMPERATURE))
-        pressure     = str(sensors.getValue(SENSOR_IDX_REL_ATM_PRESSURE))     + " " + str(sensors.getUnit(SENSOR_IDX_REL_ATM_PRESSURE))
-        CO2_lvl      = str(sensors.getValue(SENSOR_IDX_CO2_LVL))              + " " + str(sensors.getUnit(SENSOR_IDX_CO2_LVL))
-        VOC_lvl      = str(sensors.getValue(SENSOR_IDX_VOC_LVL))              + " " + str(sensors.getUnit(SENSOR_IDX_VOC_LVL))
-        
-        # Print data
-        data = [humidity, radon_st_avg, radon_lt_avg, temperature, pressure, CO2_lvl, VOC_lvl]
-        
-        if (Mode=='terminal'):
-            print tableprint.row(data, width=12)
-        elif (Mode=='pipe'):
-            print data
-        
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description ='Read values from Airthings Waveplus Sensor Devices')
+    parser.add_argument('serial',
+                        type = int,
+                        help ='The Serial Number printed on the backplate of the device.')
+
+    parser.add_argument('-t', '--period',
+                        type = float,
+                        help = 'The sample period, in seconds.',
+                        default = 3 )
+
+    parser.add_argument('-q', '--hasAirQuality',
+                        help='Does the device has air quality sensors?',
+                        action='store_true' )
+
+    parser.add_argument('--plain',
+                        help='Does not format the output for pretty printing.',
+                        )
+
+
+    args = parser.parse_args()
+
+    try:
+        #---- Initialize ----#
+        waveplus = WavePlus(args.serial, args.hasAirQuality)
+
+        if ( not args.plain ):
+            print("\nPress ctrl+C to exit program\n")
+
+        print("Device serial number: %s" %(args.serial))
+
+        header = ['Humidity', 'Radon ST avg', 'Radon LT avg', 'Temperature', 'Pressure', 'CO2 level', 'VOC level'][:waveplus.getNumSensors()]
+
+        if ( not args.plain ):
+            print(tableprint.header(header, width=12))
+        else:
+            print(header)
+
+        while True:
+            waveplus.connect()
+
+            # read values
+            sensors = waveplus.read()
+
+            numSensors = waveplus.getNumSensors()
+
+            formater = {
+                Sensors.HUMIDITY                : lambda: str(sensors.getValue(Sensors.HUMIDITY))             + " " + str(sensors.getUnit(Sensors.HUMIDITY)),
+                Sensors.RADON_SHORT_TERM_AVG    : lambda: str(sensors.getValue(Sensors.RADON_SHORT_TERM_AVG)) + " " + str(sensors.getUnit(Sensors.RADON_SHORT_TERM_AVG)),
+                Sensors.RADON_LONG_TERM_AVG     : lambda: str(sensors.getValue(Sensors.RADON_LONG_TERM_AVG))  + " " + str(sensors.getUnit(Sensors.RADON_LONG_TERM_AVG)),
+                Sensors.TEMPERATURE             : lambda: str(sensors.getValue(Sensors.TEMPERATURE))          + " " + str(sensors.getUnit(Sensors.TEMPERATURE)),
+                Sensors.REL_ATM_PRESSURE        : lambda: str(sensors.getValue(Sensors.REL_ATM_PRESSURE))     + " " + str(sensors.getUnit(Sensors.REL_ATM_PRESSURE)),
+                Sensors.CO2_LVL                 : lambda: str(sensors.getValue(Sensors.CO2_LVL))              + " " + str(sensors.getUnit(Sensors.CO2_LVL)),
+                Sensors.VOC_LVL                 : lambda: str(sensors.getValue(Sensors.VOC_LVL))              + " " + str(sensors.getUnit(Sensors.VOC_LVL))
+            }
+            data = [ formater[x]() for x in range(numSensors) ]
+            if ( not args.plain ):
+                print(tableprint.row(data, width=12))
+            else:
+                print(data)
+
+            waveplus.disconnect()
+
+            time.sleep(args.period)
+
+    except Exception as e:
+        print(str(e))
+        print()
+
+    finally:
         waveplus.disconnect()
-        
-        time.sleep(SamplePeriod)
-            
-finally:
-    waveplus.disconnect()
